@@ -1357,7 +1357,7 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             throw new UnsupportedOperationException("Election Algorithm 1 is not supported.");
         case 2:
             throw new UnsupportedOperationException("Election Algorithm 2 is not supported.");
-        case 3:
+        case 6:
             QuorumCnxManager qcm = createCnxnManager();
             QuorumCnxManager oldQcm = qcmRef.getAndSet(qcm);
             if (oldQcm != null) {
@@ -1373,6 +1373,43 @@ public class QuorumPeer extends ZooKeeperThread implements QuorumStats.Provider 
             } else {
                 LOG.error("Null listener when initializing cnx manager");
             }
+            break;
+        case 3:
+            QuorumCnxManager qcmb = createCnxnManager();
+            QuorumCnxManager oldQcmb = qcmRef.getAndSet(qcmb);
+            if (oldQcmb != null) {
+                LOG.warn("Clobbering already-set QuorumCnxManager (restarting leader election?)");
+                oldQcmb.halt();
+            }
+            QuorumCnxManager.Listener listenerb = qcmb.listener;
+            if (listenerb != null) {
+                listenerb.start();
+                BullyLeaderElection ble = new BullyLeaderElection(this, qcmb);
+                ble.start();
+                le = ble;
+            } else {
+                LOG.error("Null listener when initializing cnx manager");
+            }
+            break;
+        case 4:
+            QuorumCnxManager qcmn = createCnxnManager();
+            QuorumCnxManager oldqcmn = qcmRef.getAndSet(qcmn);
+            if (oldqcmn != null) {
+                LOG.warn("Clobbering already-set QuorumCnxManager (restarting leader election?)");
+                oldqcmn.halt();
+            }
+            QuorumCnxManager.Listener listenern = qcmn.listener;
+            if (listenern != null) {
+                listenern.start();
+                NextBullyLeaderElection nble = new NextBullyLeaderElection(this, qcmn);
+                nble.start();
+                le = nble;
+            } else {
+                LOG.error("Null listener when initializing cnx manager");
+            }
+            break;
+        case 5:
+            le = new NoVoteElection(this);
             break;
         default:
             assert false;

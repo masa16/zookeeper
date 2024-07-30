@@ -316,9 +316,9 @@ public class QuorumPeerConfig {
                 connectToLearnerMasterLimit = Integer.parseInt(value);
             } else if (key.equals("electionAlg")) {
                 electionAlg = Integer.parseInt(value);
-                if (electionAlg != 3) {
-                    throw new ConfigException("Invalid electionAlg value. Only 3 is supported.");
-                }
+                //if (electionAlg != 3) {
+                //    throw new ConfigException("Invalid electionAlg value. Only 3 is supported.");
+                //}
             } else if (key.equals("quorumListenOnAllIPs")) {
                 quorumListenOnAllIPs = parseBoolean(key, value);
             } else if (key.equals("peerType")) {

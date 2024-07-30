@@ -22,6 +22,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.io.IOException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -50,9 +51,9 @@ import org.slf4j.LoggerFactory;
  * This is part of the leader election algorithm.
  */
 
-public class FastLeaderElection implements Election {
+public class NoVoteElection implements Election {
 
-    private static final Logger LOG = LoggerFactory.getLogger(FastLeaderElection.class);
+    private static final Logger LOG = LoggerFactory.getLogger(NoVoteElection.class);
 
     /**
      * Determine how much time a process has to wait
@@ -568,6 +569,8 @@ public class FastLeaderElection implements Election {
     long proposedLeader;
     long proposedZxid;
     long proposedEpoch;
+    int proposedIndex;
+    Long[] peerIDs;
 
     /**
      * Returns the current value of the logical clock counter
@@ -617,7 +620,7 @@ public class FastLeaderElection implements Election {
     }
 
     /**
-     * Constructor of FastLeaderElection. It takes two parameters, one
+     * Constructor of NoVoteElection. It takes two parameters, one
      * is the QuorumPeer object that instantiated this object, and the other
      * is the connection manager. Such an object should be created only once
      * by each peer during an instance of the ZooKeeper service.
@@ -625,10 +628,20 @@ public class FastLeaderElection implements Election {
      * @param self  QuorumPeer that created this object
      * @param manager   Connection manager
      */
-    public FastLeaderElection(QuorumPeer self, QuorumCnxManager manager) {
+    public NoVoteElection(QuorumPeer self) {
         this.stop = false;
-        this.manager = manager;
-        starter(self, manager);
+        this.self = self;
+        //this.manager = manager;
+        int quorumPeerSize = self.getQuorumVerifier().getAllMembers().size();
+        proposedIndex = quorumPeerSize - 1;
+        peerIDs = self.getQuorumVerifier().getAllMembers().keySet().toArray(new Long[proposedIndex]);
+        Arrays.sort(peerIDs);
+        proposedZxid = -1;
+        String s = "[";
+        for (int i=0; i < quorumPeerSize; i++)
+          s += ""+peerIDs[i]+",";
+        s += "]";
+        LOG.debug("proposedIndex={}, peerIDs={}", proposedIndex, s);
     }
 
     /**
@@ -679,10 +692,10 @@ public class FastLeaderElection implements Election {
         proposedZxid = -1;
         leadingVoteSet = null;
         LOG.debug("Shutting down connection manager");
-        manager.halt();
+        //manager.halt();
         LOG.debug("Shutting down messenger");
-        messenger.halt();
-        LOG.debug("FLE is down");
+        //messenger.halt();
+        LOG.debug("NVE is down");
     }
 
     /**
@@ -823,6 +836,12 @@ public class FastLeaderElection implements Election {
             Long.toHexString(proposedZxid));
 
         proposedLeader = leader;
+        int i = 0;
+        while (i < self.getQuorumVerifier().getAllMembers().size()) {
+          if (peerIDs[i] == leader) break;
+          ++i;
+        }
+        proposedIndex = i;
         proposedZxid = zxid;
         proposedEpoch = epoch;
     }
@@ -911,6 +930,45 @@ public class FastLeaderElection implements Election {
      * sends notifications to all other peers.
      */
     public Vote lookForLeader() throws InterruptedException {
+
+        self.start_fle = Time.currentElapsedTime();
+
+        synchronized (this) {
+            logicalclock.incrementAndGet();
+            //updateProposal(getInitId(), getInitLastLoggedZxid(), getPeerEpoch());
+        }
+
+        LOG.info(
+            "New election. My id = {}, proposed zxid=0x{}",
+            self.getMyId(),
+            Long.toHexString(proposedZxid));
+
+        // Initially proposedIndex = self.getQuorumVerifier().getAllMembers().size() - 1;
+
+        LOG.debug("proposedIndex={}, leaderID={}", proposedIndex, peerIDs[proposedIndex]);
+
+        ServerState ss = (peerIDs[proposedIndex] == self.getMyId()) ? ServerState.LEADING : learningState();
+        self.setPeerState(ss);
+
+        Vote endVote = new Vote(peerIDs[proposedIndex],
+                                getInitLastLoggedZxid(),
+                                logicalclock.get(),
+                                getPeerEpoch());
+
+        if (peerIDs[proposedIndex] > self.getMyId()) {
+            proposedIndex--;
+            proposedLeader = peerIDs[proposedIndex];
+        }
+        if (proposedIndex < 0) {
+            proposedIndex = self.getQuorumVerifier().getAllMembers().size() - 1;
+            proposedLeader = peerIDs[proposedIndex];
+        }
+        proposedZxid = getInitLastLoggedZxid();
+
+        return endVote;
+    }
+
+    public Vote lookForLeaderOrig() throws InterruptedException {
         try {
             self.jmxLeaderElectionBean = new LeaderElectionBean();
             MBeanRegistry.getInstance().register(self.jmxLeaderElectionBean, self.jmxLocalPeerBean);

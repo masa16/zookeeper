@@ -1512,11 +1512,20 @@ public class Leader extends LearnerMaster {
             }
             if (ss.getCurrentEpoch() != -1) {
                 if (ss.isMoreRecentThan(leaderStateSummary)) {
+                    LOG.error(
+                            "Follower is ahead of the leader, leader summary: (current epoch)={}, (last zxid)={}, state summary: (current epoch)={}, (last zxid)={}",
+                            leaderStateSummary.getCurrentEpoch(),
+                            leaderStateSummary.getLastZxid(),
+                            ss.getCurrentEpoch(),
+                            ss.getLastZxid()
+                            );
+                    /*
                     throw new IOException("Follower is ahead of the leader, leader summary: "
                                           + leaderStateSummary.getCurrentEpoch()
                                           + " (current epoch), "
                                           + leaderStateSummary.getLastZxid()
                                           + " (last zxid)");
+                    */
                 }
                 if (ss.getLastZxid() != -1 && isParticipant(id)) {
                     electingFollowers.add(id);
